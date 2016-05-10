@@ -1,4 +1,14 @@
 apply plugin: 'com.android.application'
+apply plugin: 'net.researchgate.release'
+
+//This method pulls in the supplied Jenkins env var $BUILD_NUMBER for ci build versions
+def consumeEnvBuildNumberForVersionCode() {
+    int defaultBuildNumber = 1
+    if (System.getenv("BUILD_NUMBER") != null) {
+        defaultBuildNumber = Integer.parseInt(System.getenv("BUILD_NUMBER"))
+    }
+    return defaultBuildNumber
+}
 
 android {
     compileSdkVersion 23
@@ -8,14 +18,57 @@ android {
         applicationId "com.everybodytests.demoautoincrement"
         minSdkVersion 21
         targetSdkVersion 23
-        versionCode 1
-        versionName "1.0"
     }
+
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+
+            //handle custom versionCode and versionName settings in release AndroidManifest
+            String versionString = project.version.toString();
+            String[] versionCodeStrings = versionString.split("\\.");
+            int versionCodeRelease = Integer.parseInt(versionCodeStrings[2]);
+
+            //handle 0th build
+            if (versionCodeRelease.equals(0)) {
+                versionCodeRelease = 1
+            }
+
+            manifestPlaceholders = [releaseVersionCode: versionCodeRelease, releaseVersionName: project.version.toString()]
+            println("Release build versionCode = " + versionCodeRelease)
+            println("Release build versionName = " + project.version.toString())
         }
+
+        debug {
+            debuggable true
+
+            //handle custom versionCode and versionName settings in debug AndroidManifest
+            int debugManifestVersionCode = consumeEnvBuildNumberForVersionCode();
+            String versionNameDebug = project.version.toString() + "." + debugManifestVersionCode + "-Debug"
+            manifestPlaceholders = [debugVersionCode: debugManifestVersionCode, debugVersionName: versionNameDebug]
+            println("Debug build versionCode = " + debugManifestVersionCode)
+            println("Debug build versionName = " + versionNameDebug)
+        }
+    }
+
+    sourceSets {
+        debug {
+            manifest.srcFile 'src/debug/AndroidManifest.xml'
+
+
+        }
+        release {
+            manifest.srcFile 'src/release/AndroidManifest.xml'
+
+
+        }
+    }
+
+    lintOptions {
+        //This is a temporal solution to the Jenkins cache showing the okio library as a lint error
+        warning 'InvalidPackage'
+        abortOnError false
     }
 }
 
@@ -23,4 +76,11 @@ dependencies {
     compile fileTree(dir: 'libs', include: ['*.jar'])
     testCompile 'junit:junit:4.12'
     compile 'com.android.support:appcompat-v7:23.3.0'
+}
+
+release {
+    git {
+        requireBranch = 'master'
+        tagTemplate = 'v${version}'
+    }
 }
